@@ -14,28 +14,34 @@ function ipbus.dissector(buffer, pinfo, tree)
     repeat
         local word = buffer(offset, 4):le_uint()
         local fr_type = bit.rshift(bit.band(word, 0xF8), 3)
+
+        -- check if transaction consistent with IPbus protocol
         if PROTOCOLS[fr_type] == nil then
             return 0
         end
+
         local fr_dir = bit.rshift(bit.band(word, 0x4), 2)
         local length = bit.rshift(bit.band(word, 0x1FF00), 8)
         local tr_id = bit.rshift(bit.band(word, 0xFFE0000), 17)
         local fr_vers = bit.rshift(bit.band(word, 0xF0000000), 28)
-        local data_length = 0
+        local payload_length = 0
         local transaction_length = 0
         
+        -- get payload length.
+        -- depends on transaction type and direction.
         if fr_dir == 0 then
-            data_length = tonumber(LENGTH_CS[fr_type])
+            payload_length = tonumber(LENGTH_CS[fr_type])
         else
-            data_length = tonumber(LENGTH_SC[fr_type])
+            payload_length = tonumber(LENGTH_SC[fr_type])
         end
 
-        if data_length ~= nil then
-            transaction_length = 4 + data_length * 4
+        if payload_length ~= nil then
+            transaction_length = 4 + payload_length * 4
         else
             transaction_length = 4
         end
 
+        -- print transaction information
         local subtree = ipbtree:add(ipbus, buffer(offset, transaction_length), PROTOCOLS[fr_type].." Access. Length: " .. transaction_length)
         subtree:add(buffer(offset,1) , "Frame type: " .. PROTOCOLS[fr_type] .. " (" .. fr_type .. ")  (mask 0xf8)")
         subtree:add(buffer(offset,1) , "Frame direction: " .. DIRECTION[fr_dir] .. " (" .. fr_dir .. ")  (mask 0x4)")
@@ -43,16 +49,18 @@ function ipbus.dissector(buffer, pinfo, tree)
         subtree:add(buffer(offset + 2, 2), "Transaction ID: " .. tr_id .. "  (mask 0x0FFE)")
         subtree:add(buffer(offset + 1, 2), "Length: " .. length .. "  (mask 0x01FF)")
 
+        -- payload decoding
         local address = 0
-        if data_length ~= nil then
-            if data_length == 0 then
-                data_length = length
+        if payload_length ~= nil then
+            if payload_length == 0 then
+                payload_length = length
             end
-            for i = 1,data_length do
+            for i = 1,payload_length do
                 offset = offset + 4
                 local wordtype = "DATA: "
                 if offset < endbuf then
                     word = buffer(offset, 4):le_uint()
+                    -- Address only for controller -> slave
                     if i == 1 and ADDR_TABLE[fr_type] ~= nil and fr_dir == 0 then
                         wordtype = "ADDR: "
                         address = word
