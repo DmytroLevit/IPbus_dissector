@@ -154,7 +154,7 @@ function ipbus.dissector(buffer, pinfo, tree)
                     local transaction_length = bit.rshift(bit.band(word, 0x0000FF00), 8)
                     local type_id = bit.rshift(bit.band(word, 0x000000F0), 4)
                     local info_code = bit.rshift(bit.band(word, 0x0000000F), 0)
-                    if protocol_version != 2 then
+                    if protocol_version ~= 2 then
                         -- print error here
                     end
                     local transaction_header_tree = frame_header_tree:add(buffer(offset, 4), TYPE_ID[type_id] .. " " .. INFO_CODE[info_code])
