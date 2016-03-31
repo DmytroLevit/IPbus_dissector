@@ -167,14 +167,16 @@ function ipbus.dissector(buffer, pinfo, tree)
                         -- Read transaction
                         if type_id == 0x0 or type_id == 0x2 or type_id == 0x6 then
                             if info_code == 0x0 then
-                                for i = 1, transaction_length do
-                                    offset = offset + 4
-                                    local wordtype = "DATA: "
-                                    if offset < endbuf then
-                                        word = buffer(offset, 4):le_uint()
-                                        wordtype = "DATA: "
-                                        local data_tree = transaction_header_tree:add(buffer(offset, transaction_length * 4), "Transaction")
-                                        data_tree:add(buffer(offset, 4), "Data: 0x" .. string.format("%08x", word))
+                                if (offset + transaction_length * 4) < endbuf then
+                                    local data_tree = transaction_header_tree:add(buffer(offset, transaction_length * 4), "Transaction")
+                                    for i = 1, transaction_length do
+                                        offset = offset + 4
+                                        local wordtype = "DATA: "
+                                        if offset < endbuf then
+                                            word = buffer(offset, 4):le_uint()
+                                            wordtype = "DATA: "
+                                            data_tree:add(buffer(offset, 4), "Data: 0x" .. string.format("%08x", word))
+                                        end
                                     end
                                 end
                             end
@@ -191,10 +193,10 @@ function ipbus.dissector(buffer, pinfo, tree)
                         -- Write transaction
                         if type_id == 0x1 or type_id == 0x3 or type_id == 0x7 then
                             if info_code == 0xF then
-                                offset = offset + 1
-                                if offset < endbuf then
-                                    word = buffer(offset, 4):le_uint()
+                                offset = offset + 4
+                                if (offset + transaction_length * 4) < endbuf then
                                     local data_tree = transaction_header_tree:add(buffer(offset, 4 + transaction_length * 4), "Transaction")
+                                    word = buffer(offset, 4):le_uint()
                                     data_tree:add(buffer(offset, 4), "Address: 0x" .. string.format("%08x", word))
                                     for i = 1, transaction_length do
                                         offset = offset + 4
