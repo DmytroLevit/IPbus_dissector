@@ -146,106 +146,105 @@ function ipbus.dissector(buffer, pinfo, tree)
 
             repeat
                 offset = offset + 4
-                word = buffer(offset, 4):le_uint()
-                -- Control packet
-                if packet_type == 0x0 then
-                    protocol_version = bit.rshift(bit.band(word, 0xF0000000), 28)
-                    local transaction_id = bit.rshift(bit.band(word, 0x0FFF0000), 16)
-                    local transaction_length = bit.rshift(bit.band(word, 0x0000FF00), 8)
-                    local type_id = bit.rshift(bit.band(word, 0x000000F0), 4)
-                    local info_code = bit.rshift(bit.band(word, 0x0000000F), 0)
-                    if protocol_version ~= 2 then
-                        -- print error here
-                    end
-                    local transaction_header_tree = frame_header_tree:add(buffer(offset, 4), TYPE_ID[type_id] .. " " .. INFO_CODE[info_code])
-                    transaction_header_tree:add(buffer(offset + 2, 2), "ID: " .. transaction_id)
-                    transaction_header_tree:add(buffer(offset + 1, 1), "Length: " .. transaction_length)
-                    transaction_header_tree:add(buffer(offset + 0, 1), "Type id: " .. TYPE_ID[type_id] .. " (" .. type_id ..")")
-                    transaction_header_tree:add(buffer(offset + 0, 1), "Info code: " .. INFO_CODE[info_code] .. " (" .. info_code ..")")
-                    
-                    -- Read transaction
-                    if type_id == 0x0 or type_id == 0x2 or type_id == 0x6 then
-                        if info_code == 0x0 then
-                            for i = 1, transaction_length do
+                if offset < endbuf then
+                    word = buffer(offset, 4):le_uint()
+                    -- Control packet
+                    if packet_type == 0x0 then
+                        protocol_version = bit.rshift(bit.band(word, 0xF0000000), 28)
+                        local transaction_id = bit.rshift(bit.band(word, 0x0FFF0000), 16)
+                        local transaction_length = bit.rshift(bit.band(word, 0x0000FF00), 8)
+                        local type_id = bit.rshift(bit.band(word, 0x000000F0), 4)
+                        local info_code = bit.rshift(bit.band(word, 0x0000000F), 0)
+                        if protocol_version ~= 2 then
+                            -- print error here
+                        end
+                        local transaction_header_tree = frame_header_tree:add(buffer(offset, 4), TYPE_ID[type_id] .. " " .. INFO_CODE[info_code])
+                        transaction_header_tree:add(buffer(offset + 2, 2), "ID: " .. transaction_id)
+                        transaction_header_tree:add(buffer(offset + 1, 1), "Length: " .. transaction_length)
+                        transaction_header_tree:add(buffer(offset + 0, 1), "Type id: " .. TYPE_ID[type_id] .. " (" .. type_id ..")")
+                        transaction_header_tree:add(buffer(offset + 0, 1), "Info code: " .. INFO_CODE[info_code] .. " (" .. info_code ..")")
+                        
+                        -- Read transaction
+                        if type_id == 0x0 or type_id == 0x2 or type_id == 0x6 then
+                            if info_code == 0x0 then
+                                for i = 1, transaction_length do
+                                    offset = offset + 4
+                                    local wordtype = "DATA: "
+                                    if offset < endbuf then
+                                        word = buffer(offset, 4):le_uint()
+                                        wordtype = "DATA: "
+                                        local data_tree = transaction_header_tree:add(buffer(offset, 4), wordtype .. "0x" .. string.format("%08x", word))
+                                    end
+                                end
+                            end
+
+                            if info_code == 0xF then
                                 offset = offset + 4
-                                local wordtype = "DATA: "
+                                local wordtype = "Address: "
                                 if offset < endbuf then
                                     word = buffer(offset, 4):le_uint()
-                                    wordtype = "DATA: "
                                     local data_tree = transaction_header_tree:add(buffer(offset, 4), wordtype .. "0x" .. string.format("%08x", word))
                                 end
                             end
+                        end 
+                        
+                        -- Write transaction
+                        if type_id == 0x1 or type_id == 0x3 or type_id == 0x7 then
+                            if info_code == 0xF then
+                                for i = 1, transaction_length do
+                                    offset = offset + 4
+                                    local wordtype = "DATA: "
+                                    if offset < endbuf then
+                                        word = buffer(offset, 4):le_uint()
+                                        if i == 1 then
+                                            wordtype = "Address: "
+                                        else
+                                            wordtype = "DATA: "
+                                        end 
+                                        local data_tree = transaction_header_tree:add(buffer(offset, 4), wordtype .. "0x" .. string.format("%08x", word))
+                                    end
+                                end
+                            end
+                        end 
+
+                        -- RMW bits
+                        if type_id == 0x4 and info_code == 0xF then
+                            if (offset + 12) < endbuf then
+                                offset = offset + 4
+                                word = buffer(offset, 4):le_uint()
+                                local data_tree = transaction_header_tree:add(buffer(offset, 4), "Address: " .. "0x" .. string.format("%08x", word))
+                                offset = offset + 4
+                                word = buffer(offset, 4):le_uint()
+                                data_tree:add(buffer(offset, 4), "AND: " .. "0x" .. string.format("%08x", word))
+                                offset = offset + 4
+                                word = buffer(offset, 4):le_uint()
+                                data_tree:add(buffer(offset, 4), "OR : " .. "0x" .. string.format("%08x", word))
+                            end
                         end
 
-                        if info_code == 0xF then
+                        -- RMW sum
+                        if type_id == 0x5 and info_code == 0xF then
+                            if (offset + 8) < endbuf then
+                                offset = offset + 4
+                                word = buffer(offset, 4):le_uint()
+                                local data_tree = transaction_header_tree:add(buffer(offset, 4), "Address: " .. "0x" .. string.format("%08x", word))
+                                offset = offset + 4
+                                word = buffer(offset, 4):le_uint()
+                                data_tree:add(buffer(offset, 4), "ADDEND: " .. "0x" .. string.format("%08x", word))
+                            end
+                        end
+
+                        -- RMW response
+                        if (type_id == 0x4 or type_id == 0x5) and info_code == 0x0 then
                             offset = offset + 4
-                            local wordtype = "Address: "
                             if offset < endbuf then
                                 word = buffer(offset, 4):le_uint()
-                                local data_tree = transaction_header_tree:add(buffer(offset, 4), wordtype .. "0x" .. string.format("%08x", word))
+                                local data_tree = transaction_header_tree:add(buffer(offset, 4), "Register before modification: " .. "0x" .. string.format("%08x", word))
                             end
-                        end
-                    end 
-                    
-                    -- Write transaction
-                    if type_id == 0x1 or type_id == 0x3 or type_id == 0x7 then
-                        if info_code == 0xF then
-                            for i = 1, transaction_length do
-                                offset = offset + 4
-                                local wordtype = "DATA: "
-                                if offset < endbuf then
-                                    word = buffer(offset, 4):le_uint()
-                                    if i == 1 then
-                                        wordtype = "Address: "
-                                    else
-                                        wordtype = "DATA: "
-                                    end 
-                                    local data_tree = transaction_header_tree:add(buffer(offset, 4), wordtype .. "0x" .. string.format("%08x", word))
-                                end
-                            end
-                        end
-                    end 
+                        end 
 
-                    -- RMW bits
-                    if type_id == 0x4 and info_code == 0xF then
-                        if (offset + 12) < endbuf then
-                            offset = offset + 4
-                            word = buffer(offset, 4):le_uint()
-                            local data_tree = transaction_header_tree:add(buffer(offset, 4), "Address: " .. "0x" .. string.format("%08x", word))
-                            offset = offset + 4
-                            word = buffer(offset, 4):le_uint()
-                            data_tree:add(buffer(offset, 4), "AND: " .. "0x" .. string.format("%08x", word))
-                            offset = offset + 4
-                            word = buffer(offset, 4):le_uint()
-                            data_tree:add(buffer(offset, 4), "OR : " .. "0x" .. string.format("%08x", word))
-                        end
                     end
-
-                    -- RMW sum
-                    if type_id == 0x5 and info_code == 0xF then
-                        if (offset + 8) < endbuf then
-                            offset = offset + 4
-                            word = buffer(offset, 4):le_uint()
-                            local data_tree = transaction_header_tree:add(buffer(offset, 4), "Address: " .. "0x" .. string.format("%08x", word))
-                            offset = offset + 4
-                            word = buffer(offset, 4):le_uint()
-                            data_tree:add(buffer(offset, 4), "ADDEND: " .. "0x" .. string.format("%08x", word))
-                        end
-                    end
-
-                    -- RMW response
-                    if (type_id == 0x4 or type_id == 0x5) and info_code == 0x0 then
-                        offset = offset + 4
-                        if offset < endbuf then
-                            word = buffer(offset, 4):le_uint()
-                            local data_tree = transaction_header_tree:add(buffer(offset, 4), "Register before modification: " .. "0x" .. string.format("%08x", word))
-                        end
-                    end 
-
-                end
-
-
-            
+                end 
             until (offset + 4) > endbuf
         end
     until (offset + 4) > endbuf
