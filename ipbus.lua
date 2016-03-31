@@ -80,7 +80,7 @@ function ipbus.dissector(buffer, pinfo, tree)
         end
 
         local fr_vers = bit.rshift(bit.band(word, 0xF0000000), 28)
-        if fr_vers = 0x1 then
+        if fr_vers == 0x1 then
         -- IPbus v. 1
             local fr_dir = bit.rshift(bit.band(word, 0x4), 2)
             local length = bit.rshift(bit.band(word, 0x1FF00), 8)
@@ -148,7 +148,7 @@ function ipbus.dissector(buffer, pinfo, tree)
                 offset = offset + 4
                 word = buffer(offset, 4):le_uint()
                 -- Control packet
-                if packet_type = 0x0 then
+                if packet_type == 0x0 then
                     protocol_version = bit.rshift(bit.band(word, 0xF0000000), 28)
                     local transaction_id = bit.rshift(bit.band(word, 0x0FFF0000), 16)
                     local transaction_length = bit.rshift(bit.band(word, 0x0000FF00), 8)
@@ -164,8 +164,8 @@ function ipbus.dissector(buffer, pinfo, tree)
                     transaction_header_tree:add(buffer(offset + 0, 1), "Info code: " .. INFO_CODE[info_code] .. " (" .. info_code ..")")
                     
                     -- Read transaction
-                    if type_id = 0x0 or type_id = 0x2 or type_id = 0x6 then
-                        if info_code = 0x0 then
+                    if type_id == 0x0 or type_id == 0x2 or type_id == 0x6 then
+                        if info_code == 0x0 then
                             for i = 1, transaction_length do
                                 offset = offset + 4
                                 local wordtype = "DATA: "
@@ -177,7 +177,7 @@ function ipbus.dissector(buffer, pinfo, tree)
                             end
                         end
 
-                        if info_code = 0xF then
+                        if info_code == 0xF then
                             offset = offset + 4
                             local wordtype = "Address: "
                             if offset < endbuf then
@@ -188,14 +188,14 @@ function ipbus.dissector(buffer, pinfo, tree)
                     end 
                     
                     -- Write transaction
-                    if type_id = 0x1 or type_id = 0x3 or type_id = 0x7 then
-                        if info_code = 0xF then
+                    if type_id == 0x1 or type_id == 0x3 or type_id == 0x7 then
+                        if info_code == 0xF then
                             for i = 1, transaction_length do
                                 offset = offset + 4
                                 local wordtype = "DATA: "
                                 if offset < endbuf then
                                     word = buffer(offset, 4):le_uint()
-                                    if i = 1 then
+                                    if i == 1 then
                                         wordtype = "Address: "
                                     else
                                         wordtype = "DATA: "
@@ -207,7 +207,7 @@ function ipbus.dissector(buffer, pinfo, tree)
                     end 
 
                     -- RMW bits
-                    if type_id = 0x4 and info_code = 0xF then
+                    if type_id == 0x4 and info_code == 0xF then
                         if (offset + 12) < endbuf then
                             offset = offset + 4
                             word = buffer(offset, 4):le_uint()
@@ -222,7 +222,7 @@ function ipbus.dissector(buffer, pinfo, tree)
                     end
 
                     -- RMW sum
-                    if type_id = 0x5 and info_code = 0xF then
+                    if type_id == 0x5 and info_code == 0xF then
                         if (offset + 8) < endbuf then
                             offset = offset + 4
                             word = buffer(offset, 4):le_uint()
@@ -234,7 +234,7 @@ function ipbus.dissector(buffer, pinfo, tree)
                     end
 
                     -- RMW response
-                    if (type_id = 0x4 or type_id = 0x5) and info_code = 0x0 then
+                    if (type_id == 0x4 or type_id == 0x5) and info_code == 0x0 then
                         offset = offset + 4
                         if offset < endbuf then
                             word = buffer(offset, 4):le_uint()
